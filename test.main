@@ -1,0 +1,22 @@
+package main
+
+import "fmt"
+
+func main() {
+	m := make(map[int]int)
+	r, _ := NewRoll("2d6")
+
+	for i := 2; i <= 12; i++ {
+		m[i] = 0
+	}
+
+	// fmt.Println(r.Calc())
+
+	for i := 0; i < 10000; i++ {
+		result := r.Calc()
+
+		m[result] += 1
+	}
+
+	fmt.Println(m)
+}
