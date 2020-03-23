@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
-	"io/ioutil"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -55,6 +56,65 @@ func main() {
 	discord.Close()
 }
 
+func handleVideo(s *discordgo.Session, m *discordgo.MessageCreate) {
+	c, err := s.State.Channel(m.ChannelID)
+	if err != nil {
+		return
+	}
+	g, err := s.State.Guild(c.GuildID)
+	if err != nil {
+		return
+	}
+
+	for _, vs := range g.VoiceStates {
+		if vs.UserID == m.Author.ID {
+			_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("https://www.discordapp.com/channels/%s/%s", vs.GuildID, vs.ChannelID))
+		}
+	}
+}
+
+func handleRoll(s *discordgo.Session, m *discordgo.MessageCreate) {
+	rest := strings.TrimSpace(m.Content[len(PREFIX):])
+
+	rolls := strings.Split(rest, "+")
+
+	sum := 0
+	for _, roll := range rolls {
+		text := strings.TrimSpace(roll)
+
+		// if contains d, then it's a roll
+		if strings.Contains(text, "d") {
+			r, err := NewRoll(text)
+			if err != nil {
+				_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Incorrectly formatted command: %s", m.Content))
+				if err != nil {
+					log.Println(err)
+				}
+				return
+			}
+
+			sum += r.Calc()
+		} else {
+			num, err := strconv.Atoi(text)
+			if err != nil {
+				_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Incorrectly formatted command: %s", m.Content))
+				if err != nil {
+					log.Println(err)
+				}
+				return
+			}
+
+			sum += num
+		}
+	}
+
+	// if successful, go ahead and send message!
+	_, err := s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s's Roll: %v", m.Author.Username, sum))
+	if err != nil {
+		log.Println(err)
+	}
+}
+
 func OnMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// ignore any messages from the bot itself
@@ -65,57 +125,11 @@ func OnMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// syntax is now "/roll <roll> + <roll> + "
 
 	if strings.HasPrefix(m.Content, "/roll") {
-		rest := strings.TrimSpace(m.Content[len(PREFIX):])
-
-		rolls := strings.Split(rest, "+")
-
-		sum := 0
-		for _, roll := range rolls {
-			text := strings.TrimSpace(roll)
-
-			// if contains d, then it's a roll
-			if strings.Contains(text, "d") {
-				r, err := NewRoll(text)
-				if err != nil {
-					_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Incorrectly formatted command: %s", m.Content))
-					return
-				}
-
-				sum += r.Calc()
-			} else {
-				num, err := strconv.Atoi(text)
-				if err != nil {
-					_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Incorrectly formatted command: %s", m.Content))
-					return
-				}
-
-				sum += num
-			}
-		}
-		// if err != nil {
-		// 	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Invalid command: %s", m.Content))
-		// 	// check(err)
-		// 	return
-		// }
-
-		_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s's Roll: %v", m.Author.Username, sum))
+		handleRoll(s, m)
 	}
 
 	// generate video link for voice channel that user is in
 	if strings.HasPrefix(m.Content, "/video") {
-		c, err := s.State.Channel(m.ChannelID)
-		if err != nil {
-			return
-		}
-		g, err := s.State.Guild(c.GuildID)
-		if err != nil {
-			return
-		}
-
-		for _, vs := range g.VoiceStates {
-			if vs.UserID == m.Author.ID {
-				_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("https://www.discordapp.com/channels/%s/%s", vs.GuildID, vs.ChannelID))
-			}
-		}
+		handleVideo(s, m)
 	}
 }
